@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telegram-auth-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "UPSTREAM_URL": "https://replace-with-your-upstream.example",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "AUTH_MANAGER", "class_name": "AuthManager" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AuthManager"] }],
+}
