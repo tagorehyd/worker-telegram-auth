@@ -51,17 +51,40 @@ This repository deploys a streaming reverse proxy guarded by a **single global**
 
 1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token into the `TELEGRAM_BOT_TOKEN` secret.
 2. Send the bot a message, then call `getUpdates` with your token locally and read `message.chat.id`; put that numeric value (including a leading `-` for groups) in `TELEGRAM_CHAT_ID`. Do not commit either value.
-3. Generate a webhook secret locally, for example: `openssl rand -hex 32`, and store exactly that value as `TELEGRAM_WEBHOOK_SECRET`.
-4. After the Worker is live, set the webhook. Replace every angle-bracket placeholder locally; the bot token is deliberately not shown in this repository:
+3. **Create the webhook secret.** This is a random shared password between Telegram and this Worker; it is **not** your bot token and it is not a URL. Generate it once on your own computer:
+
+   ```bash
+   openssl rand -hex 32
+   ```
+
+   Copy the single 64-character output immediately. Keep it private; anyone who knows both the Worker URL and this secret could imitate Telegram's webhook header.
+
+4. **Store that exact value in Cloudflare.** In **Workers & Pages → your Worker → Settings → Variables and Secrets**, click **Add**, choose **Secret**, name it `TELEGRAM_WEBHOOK_SECRET`, paste the generated value, and save/deploy. You can instead run this command and paste the generated value when prompted (the value is not echoed):
+
+   ```bash
+   npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+   ```
+
+5. **Tell Telegram the same value.** After the Worker is live, run the following command in a terminal. Replace the three placeholders locally. The value passed as `secret_token` must be exactly the same value stored in the Worker in step 4:
+
+   ```bash
+   curl -fsS -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+     --data-urlencode "url=https://<WORKER-DOMAIN>/__access/telegram" \
+     --data-urlencode "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
+     --data-urlencode 'allowed_updates=["callback_query"]'
+   ```
+
+6. **What happens next.** Telegram saves the URL and shared secret. On every later callback it sends the secret in `X-Telegram-Bot-Api-Secret-Token`. The Worker compares that header to its `TELEGRAM_WEBHOOK_SECRET` using a constant-time comparison before it reads the Telegram action, and then separately checks `TELEGRAM_CHAT_ID`.
+
+### Rotate or troubleshoot the webhook secret
+
+If you believe the secret was exposed, generate a new one, replace the Worker secret, deploy, then run `setWebhook` again with the new exact value. During the short period between those two actions Telegram callbacks will return `401`; this is expected. To verify Telegram accepted the configuration without revealing the secret, run:
 
 ```bash
-curl -fsS -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-  --data-urlencode "url=https://<WORKER-DOMAIN>/__access/telegram" \
-  --data-urlencode "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
-  --data-urlencode 'allowed_updates=["callback_query"]'
+curl -fsS "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 ```
 
-Telegram sends the secret in `X-Telegram-Bot-Api-Secret-Token`; the Worker uses constant-time comparison and also rejects callbacks whose chat ID is not exactly `TELEGRAM_CHAT_ID`.
+Confirm that `url` is `https://<WORKER-DOMAIN>/__access/telegram` and review `last_error_message` if callbacks are not arriving. Never paste your bot token or webhook secret into Git, issues, chat messages, or screenshots.
 
 ## Test the flow
 
